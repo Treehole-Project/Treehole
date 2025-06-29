@@ -1,28 +1,155 @@
 package api
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"html"
 	"log"
 	"net/http"
+	"os"
+	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"treehole/internal/models"
 	"treehole/internal/scraper"
-	"os"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
+// RateLimiter 简单的速率限制器
+type RateLimiter struct {
+	requests map[string][]time.Time
+	mutex    sync.RWMutex
+}
+
+// NewRateLimiter 创建新的速率限制器
+func NewRateLimiter() *RateLimiter {
+	return &RateLimiter{
+		requests: make(map[string][]time.Time),
+	}
+}
+
+// Allow 检查是否允许请求
+func (rl *RateLimiter) Allow(key string, maxRequests int, duration time.Duration) bool {
+	rl.mutex.Lock()
+	defer rl.mutex.Unlock()
+
+	now := time.Now()
+	cutoff := now.Add(-duration)
+
+	// 获取该key的请求记录
+	requests, exists := rl.requests[key]
+	if !exists {
+		rl.requests[key] = []time.Time{now}
+		return true
+	}
+
+	// 过滤掉过期的请求
+	var validRequests []time.Time
+	for _, reqTime := range requests {
+		if reqTime.After(cutoff) {
+			validRequests = append(validRequests, reqTime)
+		}
+	}
+
+	// 检查是否超过限制
+	if len(validRequests) >= maxRequests {
+		return false
+	}
+
+	// 添加当前请求
+	validRequests = append(validRequests, now)
+	rl.requests[key] = validRequests
+
+	return true
+}
+
+// RateLimitMiddleware 速率限制中间件
+func RateLimitMiddleware(rateLimiter *RateLimiter) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// 根据IP和用户代理生成key
+		clientKey := c.ClientIP() + "|" + c.GetHeader("User-Agent")
+		
+		// 对于写操作进行更严格的限制
+		if c.Request.Method == "POST" {
+			if !rateLimiter.Allow(clientKey, 10, time.Minute) { // 每分钟最多10次POST请求
+				c.JSON(http.StatusTooManyRequests, gin.H{
+					"error": "Too many requests, please try again later",
+				})
+				c.Abort()
+				return
+			}
+		} else {
+			if !rateLimiter.Allow(clientKey, 100, time.Minute) { // 每分钟最多100次GET请求
+				c.JSON(http.StatusTooManyRequests, gin.H{
+					"error": "Too many requests, please try again later",
+				})
+				c.Abort()
+				return
+			}
+		}
+
+		c.Next()
+	}
+}
+
 // SetupRouter 设置路由
 func SetupRouter(db *gorm.DB, scraperService *scraper.Service) *gin.Engine {
 	r := gin.Default()
 
+	// 创建速率限制器
+	rateLimiter := NewRateLimiter()
+
+	// 添加速率限制中间件
+	r.Use(RateLimitMiddleware(rateLimiter))
+
+	// 添加安全响应头中间件
+	r.Use(func(c *gin.Context) {
+		// 防止XSS攻击
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("X-XSS-Protection", "1; mode=block")
+		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		
+		// 安全的Content Security Policy
+		csp := "default-src 'self'; " +
+			"script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+			"style-src 'self' 'unsafe-inline'; " +
+			"img-src 'self' data: https:; " +
+			"font-src 'self' data:; " +
+			"connect-src 'self'"
+		c.Header("Content-Security-Policy", csp)
+		
+		c.Next()
+	})
+
 	// 添加 CORS 中间件
 	r.Use(func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		// 从环境变量获取允许的域名，默认只允许本地和主域名
+		allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
+		if allowedOrigins == "" {
+			allowedOrigins = "http://localhost:3000,http://localhost:8081,https://treehole.club"
+		}
+		
+		origin := c.Request.Header.Get("Origin")
+		if origin != "" {
+			// 检查是否在允许的域名列表中
+			for _, allowedOrigin := range strings.Split(allowedOrigins, ",") {
+				if strings.TrimSpace(allowedOrigin) == origin {
+					c.Header("Access-Control-Allow-Origin", origin)
+					break
+				}
+			}
+		}
+		
+		c.Header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+		c.Header("Access-Control-Max-Age", "86400") // 缓存预检请求结果24小时
 
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
@@ -218,11 +345,30 @@ func (h *Handler) CreatePost(c *gin.Context) {
 		return
 	}
 
+	// 验证和清理输入
+	title, err := validateAndSanitizeInput(req.Title, 100)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	content, err := validateAndSanitizeInput(req.Content, 5000)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	username, err := validateAndSanitizeInput(req.UserName, 50)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	// 创建本地帖子记录
 	post := models.Post{
-		Title:       req.Title,
-		Content:     req.Content,
-		Author:      req.UserName,
+		Title:       title,
+		Content:     content,
+		Author:      username,
 		OriginalID: "0", // 默认原始ID
 		AuthorID:    "automatic"+time.Now().Format("20060102150405"), // 默认openid
 		RadioGroup:  "radio40",   // 默认分组
@@ -270,6 +416,19 @@ func (h *Handler) CreateReply(c *gin.Context) {
 		return
 	}
 
+	// 验证和清理输入
+	content, err := validateAndSanitizeInput(req.Content, 2000)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	username, err := validateAndSanitizeInput(req.UserName, 50)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	// 先找到帖子
 	var post models.Post
 	if err := h.db.Where("id = ? OR original_id = ?", postID, postID).First(&post).Error; err != nil {
@@ -284,8 +443,8 @@ func (h *Handler) CreateReply(c *gin.Context) {
 	// 创建回复记录
 	reply := models.Reply{
 		PostID:    post.ID,
-		Content:   req.Content,
-		Author:    req.UserName,
+		Content:   content,
+		Author:    username,
 		AuthorID:  "automatic"+time.Now().Format("20060102150405"), // 默认openid
 		ApplyTo:   "automatic",
 		Level:     1,           // 默认层级
@@ -969,4 +1128,92 @@ func buildMultiKeywordCondition(field string, keywords []string) (string, []inte
 	// 所有关键词都必须匹配（AND关系）
 	condition := "(" + strings.Join(conditions, " AND ") + ")"
 	return condition, args
+}
+
+// CSRFMiddleware CSRF保护中间件
+func CSRFMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// 对于GET请求和OPTIONS请求，不需要CSRF保护
+		if c.Request.Method == "GET" || c.Request.Method == "OPTIONS" {
+			c.Next()
+			return
+		}
+
+		// 获取CSRF令牌
+		token := c.GetHeader("X-CSRF-Token")
+		if token == "" {
+			token = c.PostForm("_token")
+		}
+
+		// 验证CSRF令牌
+		sessionToken := c.GetHeader("X-Session-Token")
+		if token == "" || sessionToken == "" || !validateCSRFToken(token, sessionToken) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "CSRF token validation failed"})
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// generateCSRFToken 生成CSRF令牌
+func generateCSRFToken() string {
+	bytes := make([]byte, 32)
+	rand.Read(bytes)
+	return hex.EncodeToString(bytes)
+}
+
+// validateCSRFToken 验证CSRF令牌
+func validateCSRFToken(token, sessionToken string) bool {
+	// 这里应该实现实际的令牌验证逻辑
+	// 简单示例：检查令牌是否不为空且长度合适
+	return len(token) == 64 && len(sessionToken) > 0
+}
+
+// validateAndSanitizeInput 验证和清理输入
+func validateAndSanitizeInput(input string, maxLength int) (string, error) {
+	// 检查长度
+	if utf8.RuneCountInString(input) > maxLength {
+		return "", fmt.Errorf("input too long, maximum %d characters allowed", maxLength)
+	}
+
+	// 去除前后空白
+	input = strings.TrimSpace(input)
+	
+	// 检查是否为空
+	if input == "" {
+		return "", fmt.Errorf("input cannot be empty")
+	}
+
+	// HTML转义防止XSS
+	input = html.EscapeString(input)
+
+	// 过滤危险字符和脚本标签
+	dangerousPatterns := []string{
+		`<script[^>]*>.*?</script>`,
+		`javascript:`,
+		`vbscript:`,
+		`onload=`,
+		`onclick=`,
+		`onerror=`,
+		`<iframe[^>]*>.*?</iframe>`,
+		`<img[^>]*src\s*=\s*["']?javascript:.*?["']?[^>]*>`,
+		`<a[^>]*href\s*=\s*["']?javascript:.*?["']?[^>]*>`,
+		`<style[^>]*>.*?</style>`,
+		`<link[^>]*>`,
+		`<body[^>]*>`,
+		`<html[^>]*>`,
+		`<meta[^>]*>`,
+	}
+
+	// 检查是否包含危险内容
+	for _, pattern := range dangerousPatterns {
+		matched, _ := regexp.MatchString(pattern, input)
+		if matched {
+			return "", fmt.Errorf("input contains dangerous content")
+		}
+	}
+
+	return input, nil
 }

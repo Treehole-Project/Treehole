@@ -168,3 +168,19 @@ func SafeTransaction(db *gorm.DB, fn func(*gorm.DB) error) error {
 		return db.Transaction(fn)
 	})
 }
+
+// 添加数据库连接安全配置
+func configureDatabaseSecurity(db *gorm.DB) error {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+	
+	// 设置连接池安全参数
+	sqlDB.SetMaxOpenConns(25)                 // 限制最大连接数
+	sqlDB.SetMaxIdleConns(5)                  // 限制空闲连接数
+	sqlDB.SetConnMaxLifetime(5 * time.Minute) // 连接最大生存时间
+	sqlDB.SetConnMaxIdleTime(2 * time.Minute) // 空闲连接最大时间
+	
+	return nil
+}
