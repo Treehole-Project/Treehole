@@ -1,0 +1,31 @@
+# Git 相关
+.git
+.gitignore
+
+# 构建产物
+WEBSITE/dist
+WEBSITE/node_modules
+GO/main
+GO/data.db
+
+# 开发文件
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# IDE 文件
+.vscode
+.idea
+*.swp
+*.swo
+
+# 文档
+README.md
+LICENSE
+
+# 其他
+.env.local
+.env.development
+.env.test
+.env.production

@@ -1,0 +1,28 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="chatGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00B4D8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0077B6;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="accentGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#90E0EF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00B4D8;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- 主聊天气泡 -->
+  <path d="M25 30 C25 25, 30 20, 35 20 L60 20 C65 20, 70 25, 70 30 L70 45 C70 50, 65 55, 60 55 L40 55 L30 65 L30 55 C25 55, 25 50, 25 45 Z" 
+        fill="url(#chatGradient)" 
+        stroke="none"/>
+  
+  <!-- 次要聊天气泡 -->
+  <path d="M35 45 C35 40, 40 35, 45 35 L70 35 C75 35, 80 40, 80 45 L80 60 C80 65, 75 70, 70 70 L50 70 L40 80 L40 70 C35 70, 35 65, 35 60 Z" 
+        fill="url(#accentGradient)" 
+        stroke="none" 
+        opacity="0.8"/>
+  
+  <!-- 装饰性圆点 -->
+  <circle cx="45" cy="37" r="2" fill="white" opacity="0.9"/>
+  <circle cx="52" cy="37" r="2" fill="white" opacity="0.9"/>
+  <circle cx="59" cy="37" r="2" fill="white" opacity="0.9"/>
+</svg>
