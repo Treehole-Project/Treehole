@@ -91,7 +91,7 @@ Treehole/
 
 1. **克隆仓库**
    ```bash
-   git clone https://github.com/yourusername/treehole.git
+   git clone https://github.com/Treehole-Project/treehole.git
    cd treehole
    ```
 
@@ -214,7 +214,7 @@ SCRAPER_INTERVAL=300  # 5分钟同步一次
 
 <div align="center">
 
-** © 2025 Treehole Project. 完全开源的匿名交流平台 **
+   © 2025 Treehole Project. 完全开源的匿名交流平台 
 
 *Made with ❤️ by 某不知名 BIT 学生*
 
