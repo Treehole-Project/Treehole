@@ -34,7 +34,7 @@ func main() {
 	}
 
 	// 初始化爬虫
-	scraperService := scraper.NewService(db)
+	scraperService := scraper.NewService(db, cfg)
 
 	// 启动定时任务
 	scheduler := scheduler.New(scraperService)

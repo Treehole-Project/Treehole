@@ -16,6 +16,9 @@ type Config struct {
 	RequestTimeout    time.Duration
 	UserAgent         string
 	RateLimitDelay    time.Duration
+	// 隐私发帖配置
+	ProxyEnabled      bool
+	ProxyURL          string
 }
 
 // Load 加载配置
@@ -28,6 +31,9 @@ func Load() *Config {
 		RequestTimeout:    getDurationEnv("REQUEST_TIMEOUT", 30*time.Second),
 		UserAgent:         getEnv("USER_AGENT", "TreeHoleMirror/1.0"),
 		RateLimitDelay:    getDurationEnv("RATE_LIMIT_DELAY", 1*time.Second),
+		// 隐私发帖配置
+		ProxyEnabled:      getEnv("PROXY_ENABLED", "false") == "true",
+		ProxyURL:          getEnv("PROXY_URL", ""),
 	}
 }
 

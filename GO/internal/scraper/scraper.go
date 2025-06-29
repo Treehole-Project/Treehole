@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"treehole/internal/config"
 	"treehole/internal/database"
 	"treehole/internal/models"
 
@@ -18,10 +19,12 @@ import (
 
 // Service 爬虫服务
 type Service struct {
-	db       *gorm.DB
-	client   *http.Client
-	baseURL  string
-	saveMux  sync.Mutex // 保护数据库写入操作的互斥锁
+	db         *gorm.DB
+	client     *http.Client // 用于抓取数据的客户端（不使用代理）
+	syncClient *http.Client // 用于同步到主站的客户端（使用代理）
+	baseURL    string
+	config     *config.Config
+	saveMux    sync.Mutex // 保护数据库写入操作的互斥锁
 }
 
 // APIResponse 通用 API 响应结构
@@ -75,16 +78,38 @@ type CommentData struct {
 }
 
 // NewService 创建新的爬虫服务
-func NewService(db *gorm.DB) *Service {
+func NewService(db *gorm.DB, cfg *config.Config) *Service {
+	// 创建用于抓取数据的HTTP客户端（不使用代理）
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 	}
 
+	// 创建用于同步到主站的HTTP客户端
+	syncClient := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	// 如果启用了代理，只为同步客户端配置代理
+	if cfg.ProxyEnabled && cfg.ProxyURL != "" {
+		proxyURL, err := url.Parse(cfg.ProxyURL)
+		if err != nil {
+			log.Printf("Failed to parse proxy URL: %v", err)
+		} else {
+			transport := &http.Transport{
+				Proxy: http.ProxyURL(proxyURL),
+			}
+			syncClient.Transport = transport
+			log.Printf("Proxy enabled for sync operations: %s", cfg.ProxyURL)
+		}
+	}
+
 	return &Service{
-		db:      db,
-		client:  client,
-		baseURL: "https://www.yqtech.ltd:8802",
-		saveMux: sync.Mutex{},
+		db:         db,
+		client:     client,
+		syncClient: syncClient,
+		baseURL:    "https://www.yqtech.ltd:8802",
+		config:     cfg,
+		saveMux:    sync.Mutex{},
 	}
 }
 
@@ -729,8 +754,8 @@ func (s *Service) SyncPostToMainSite(post models.Post) error {
 	syncURL := fmt.Sprintf("%s/addtask?c_time=%s&content=%s&price=&title=%s&wechat=&avatar=http%%3A%%2F%%2Fyqtech.ltd%%2Fanimal%%2F4.png&radioGroup=radio40&campusGroup=2&userName=%s&img=%%5B%%5D&cover=%%5B%%5D&region=0&likeNum=0&commentNum=0&watchNum=%d&openid=%s",
 		s.baseURL, timeStr, content, title, userName, post.ViewCount, post.AuthorID)
 
-	// 发送请求到主站
-	resp, err := s.client.Get(syncURL)
+	// 发送请求到主站（使用代理客户端）
+	resp, err := s.syncClient.Get(syncURL)
 	if err != nil {
 		log.Printf("Failed to sync post to main site: %v", err)
 		return err
@@ -779,7 +804,7 @@ func (s *Service) SyncReplyToMainSite(post models.Post, reply models.Reply) erro
 	syncURL := fmt.Sprintf("%s/addcomment?c_time=%s&openid=%s&pk=%s&comment=%s&userName=%s&avatar=http%%3A%%2F%%2Fyqtech.ltd%%2Fanimal%%2F4.png&applyTo=%s&img=%%5B%%5D&level=%d&pid=%d",
 		s.baseURL, timeStr, reply.AuthorID, pk, content, userName, reply.ApplyTo, reply.Level, pid)
 
-	// 发送请求到主站
+	// 发送请求到主站（使用代理客户端）
 	resp, err := s.client.Get(syncURL)
 	if err != nil {
 		log.Printf("Failed to sync reply to main site: %v", err)
