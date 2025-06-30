@@ -231,6 +231,15 @@ type Handler struct {
 func (h *Handler) GetPosts(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	
+	// 限制最大limit值防止恶意攻击
+	if limit > 50 {
+		limit = 50
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	
 	offset := (page - 1) * limit
 
 	var posts []models.Post
@@ -285,6 +294,15 @@ func (h *Handler) GetPostReplies(c *gin.Context) {
 	id := c.Param("id")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	
+	// 限制最大limit值防止恶意攻击
+	if limit > 50 {
+		limit = 50
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	
 	offset := (page - 1) * limit
 
 	// 先找到帖子
@@ -495,6 +513,15 @@ func (h *Handler) SearchPosts(c *gin.Context) {
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	
+	// 限制最大limit值防止恶意攻击
+	if limit > 50 {
+		limit = 50
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	
 	offset := (page - 1) * limit
 
 	var posts []models.Post
@@ -574,6 +601,15 @@ func (h *Handler) GetPostsByTag(c *gin.Context) {
 	tagName := c.Param("name")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	
+	// 限制最大limit值防止恶意攻击
+	if limit > 50 {
+		limit = 50
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	
 	offset := (page - 1) * limit
 
 	var posts []models.Post
@@ -672,6 +708,15 @@ func (h *Handler) AdvancedSearch(c *gin.Context) {
 	// 分页参数
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	
+	// 限制最大limit值防止恶意攻击
+	if limit > 50 {
+		limit = 50
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	
 	offset := (page - 1) * limit
 
 	var posts []models.Post
@@ -837,6 +882,15 @@ func (h *Handler) SearchUsers(c *gin.Context) {
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	
+	// 限制最大limit值防止恶意攻击
+	if limit > 50 {
+		limit = 50
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	
 	offset := (page - 1) * limit
 
 	type UserInfo struct {
@@ -903,6 +957,15 @@ func (h *Handler) GetUserPosts(c *gin.Context) {
 	
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	
+	// 限制最大limit值防止恶意攻击
+	if limit > 50 {
+		limit = 50
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	
 	offset := (page - 1) * limit
 
 	var posts []models.Post
@@ -950,6 +1013,15 @@ func (h *Handler) GetUserReplies(c *gin.Context) {
 	
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	
+	// 限制最大limit值防止恶意攻击
+	if limit > 50 {
+		limit = 50
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	
 	offset := (page - 1) * limit
 
 	var replies []models.Reply
@@ -1005,6 +1077,15 @@ func (h *Handler) SearchComments(c *gin.Context) {
 	
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	
+	// 限制最大limit值防止恶意攻击
+	if limit > 50 {
+		limit = 50
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	
 	offset := (page - 1) * limit
 
 	var replies []models.Reply
