@@ -729,6 +729,33 @@ func (s *Service) formatImages(imgStr string) string {
 	return string(jsonArray)
 }
 
+// withRetry 通用重试函数
+func (s *Service) withRetry(operation func() error, maxRetries int, description string) error {
+	var lastError error
+	
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		err := operation()
+		if err == nil {
+			if attempt > 1 {
+				log.Printf("%s succeeded on attempt %d", description, attempt)
+			}
+			return nil
+		}
+		
+		lastError = err
+		log.Printf("%s failed on attempt %d/%d: %v", description, attempt, maxRetries, err)
+		
+		// 如果不是最后一次尝试，等待一段时间再重试
+		if attempt < maxRetries {
+			waitTime := time.Duration(attempt) * time.Second // 退避策略：1s, 2s, 3s
+			log.Printf("Retrying in %v...", waitTime)
+			time.Sleep(waitTime)
+		}
+	}
+	
+	return fmt.Errorf("%s failed after %d attempts, last error: %v", description, maxRetries, lastError)
+}
+
 // SyncPostToMainSite 同步帖子到主站
 func (s *Service) SyncPostToMainSite(post models.Post) error {
 	// 构建请求URL
@@ -740,18 +767,27 @@ func (s *Service) SyncPostToMainSite(post models.Post) error {
 	syncURL := fmt.Sprintf("%s/addtask?c_time=%s&content=%s&price=&title=%s&wechat=&avatar=http%%3A%%2F%%2Fyqtech.ltd%%2Fanimal%%2F4.png&radioGroup=radio40&campusGroup=2&userName=%s&img=%%5B%%5D&cover=%%5B%%5D&region=0&likeNum=0&commentNum=0&watchNum=%d&openid=%s",
 		s.baseURL, timeStr, content, title, userName, post.ViewCount, post.AuthorID)
 
-	// 发送请求到主站（使用代理客户端）
-	resp, err := s.syncClient.Get(syncURL)
+	// 使用重试机制发送请求到主站
+	err := s.withRetry(func() error {
+		resp, err := s.syncClient.Get(syncURL)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		
+		// 检查HTTP状态码
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return fmt.Errorf("HTTP error: %d %s", resp.StatusCode, resp.Status)
+		}
+		
+		return nil
+	}, 3, fmt.Sprintf("Sync post to main site (ID: %d)", post.ID))
+
 	if err != nil {
-		log.Printf("Failed to sync post to main site: %v", err)
 		return err
 	}
-	defer resp.Body.Close()
 
 	log.Printf("Post synced to main site successfully, ID: %d", post.ID)
-	
-	// 等待一小段时间确保主站处理完成
-	// time.Sleep(2 * time.Second)
 	
 	// 更新本地帖子ID
 	if err := s.updatePostIDAfterSync(post); err != nil {
@@ -790,18 +826,27 @@ func (s *Service) SyncReplyToMainSite(post models.Post, reply models.Reply) erro
 	syncURL := fmt.Sprintf("%s/addcomment?c_time=%s&openid=%s&pk=%s&comment=%s&userName=%s&avatar=http%%3A%%2F%%2Fyqtech.ltd%%2Fanimal%%2F4.png&applyTo=%s&img=%%5B%%5D&level=%d&pid=%d",
 		s.baseURL, timeStr, reply.AuthorID, pk, content, userName, reply.ApplyTo, reply.Level, pid)
 
-	// 发送请求到主站（使用代理客户端）
-	resp, err := s.client.Get(syncURL)
+	// 使用重试机制发送请求到主站
+	err := s.withRetry(func() error {
+		resp, err := s.client.Get(syncURL)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		
+		// 检查HTTP状态码
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return fmt.Errorf("HTTP error: %d %s", resp.StatusCode, resp.Status)
+		}
+		
+		return nil
+	}, 3, fmt.Sprintf("Sync reply to main site (ID: %d)", reply.ID))
+
 	if err != nil {
-		log.Printf("Failed to sync reply to main site: %v", err)
 		return err
 	}
-	defer resp.Body.Close()
 
 	log.Printf("Reply synced to main site successfully, ID: %d", reply.ID)
-	
-	// 等待一小段时间确保主站处理完成
-	// time.Sleep(2 * time.Second)
 	
 	// 更新本地回复ID
 	if err := s.updateReplyIDAfterSync(reply); err != nil {
