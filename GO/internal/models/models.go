@@ -28,7 +28,7 @@ type Post struct {
 	Wechat      string         `json:"wechat"`
 	Images      string         `json:"images" gorm:"type:text"` // JSON 格式存储图片URL列表
 	Cover       string         `json:"cover"`
-	State       string         `json:"state" gorm:"default:normal"` // normal, deleted, complaint, chosen, hot
+	State       string         `json:"state"` // normal, deleted, complaint, chosen, hot
 	Tag         string         `json:"tag"` // 标签
 	Replies     []Reply        `json:"replies,omitempty"`
 }

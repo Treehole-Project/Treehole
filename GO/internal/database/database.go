@@ -79,11 +79,78 @@ func InitDB(databaseURL string) (*gorm.DB, error) {
 
 // Migrate 执行数据库迁移
 func Migrate(db *gorm.DB) error {
+	// 对于SQLite，我们需要更仔细地处理迁移
+	// 首先检查表是否存在，如果存在则尝试兼容性迁移
+	
+	// 检查posts表是否存在
+	var count int64
+	db.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='posts'").Scan(&count)
+	
+	if count > 0 {
+		// 表已存在，执行兼容性检查和迁移
+		return migrateExistingTables(db)
+	}
+	
+	// 表不存在，执行标准迁移
 	return db.AutoMigrate(
 		&models.Post{},
 		&models.Reply{},
 		&models.SyncStatus{},
 	)
+}
+
+// migrateExistingTables 迁移现有表
+func migrateExistingTables(db *gorm.DB) error {
+	// 对于现有的表，我们不执行AutoMigrate，而是检查字段兼容性
+	// 如果需要，可以在这里添加ALTER TABLE语句
+	
+	// 检查posts表结构
+	var tableInfo []struct {
+		CID        int    `gorm:"column:cid"`
+		Name       string `gorm:"column:name"`
+		Type       string `gorm:"column:type"`
+		NotNull    int    `gorm:"column:notnull"`
+		DefaultVal string `gorm:"column:dflt_value"`
+		PK         int    `gorm:"column:pk"`
+	}
+	
+	db.Raw("PRAGMA table_info(posts)").Scan(&tableInfo)
+	
+	// 检查是否存在必要的字段，如果不存在则添加
+	hasStateField := false
+	for _, field := range tableInfo {
+		if field.Name == "state" {
+			hasStateField = true
+			break
+		}
+	}
+	
+	// 如果state字段不存在，添加它
+	if !hasStateField {
+		if err := db.Exec("ALTER TABLE posts ADD COLUMN state TEXT DEFAULT 'normal'").Error; err != nil {
+			return err
+		}
+	}
+	
+	// 确保replies表存在
+	var replyCount int64
+	db.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='replies'").Scan(&replyCount)
+	if replyCount == 0 {
+		if err := db.AutoMigrate(&models.Reply{}); err != nil {
+			return err
+		}
+	}
+	
+	// 确保sync_statuses表存在
+	var syncCount int64
+	db.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='sync_statuses'").Scan(&syncCount)
+	if syncCount == 0 {
+		if err := db.AutoMigrate(&models.SyncStatus{}); err != nil {
+			return err
+		}
+	}
+	
+	return nil
 }
 
 // WithRetry 使用重试机制执行数据库操作
