@@ -464,7 +464,7 @@ func (s *Service) savePost(taskData *TaskData) error {
 	})
 }
 
-// scrapePostComments 抓取帖子的评论 - 使用批量保存
+// scrapePostComments 抓取帖子的评论
 func (s *Service) scrapePostComments(postID string) error {
 	comments, err := s.getComments(postID)
 	if err != nil {
@@ -482,6 +482,7 @@ func (s *Service) scrapePostComments(postID string) error {
 	for _, comment := range comments {
 		reply := s.buildReply(comment, post.ID)
 		if reply != nil {
+			s.saveCommentSingle(*reply) // 保存单条评论
 			allReplies = append(allReplies, *reply)
 		}
 		
@@ -489,23 +490,8 @@ func (s *Service) scrapePostComments(postID string) error {
 		for _, nestedComment := range comment.CommentList {
 			nestedReply := s.buildReply(nestedComment, post.ID)
 			if nestedReply != nil {
+				s.saveCommentSingle(*nestedReply) // 保存嵌套评论
 				allReplies = append(allReplies, *nestedReply)
-			}
-		}
-	}
-
-	// 批量保存评论
-	if len(allReplies) > 0 {
-		err := database.WithRetry(s.db, func(db *gorm.DB) error {
-			// 分批插入，每批50条
-			return database.BatchInsert(db, allReplies, 50)
-		})
-		
-		if err != nil {
-			log.Printf("Failed to batch save comments for post %s: %v", postID, err)
-			// 如果批量插入失败，尝试逐个插入
-			for _, reply := range allReplies {
-				s.saveCommentSingle(reply)
 			}
 		}
 	}
@@ -557,7 +543,7 @@ func (s *Service) buildReply(comment CommentData, postID uint) *models.Reply {
 	}
 }
 
-// saveCommentSingle 保存单条评论（作为批量保存的后备方案）
+// saveCommentSingle 保存单条评论
 func (s *Service) saveCommentSingle(reply models.Reply) {
 	err := database.WithRetry(s.db, func(db *gorm.DB) error {
 		return db.Create(&reply).Error
