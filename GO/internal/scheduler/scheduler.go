@@ -30,8 +30,8 @@ func New(scraperService *scraper.Service) *Scheduler {
 
 // Start 启动调度器
 func (s *Scheduler) Start() {
-	if os.Getenv("SYNC_ENABLED") != "true" {
-		log.Println("SYNC_ENABLED is not set to true, scheduler will not start")
+	if os.Getenv("INBOUND_SYNC_ENABLED") != "true" {
+		log.Println("INBOUND_SYNC_ENABLED is not set to true, scheduler will not start")
 		return
 	}
 	// 从环境变量获取同步间隔，默认为每30分钟

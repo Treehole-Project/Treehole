@@ -410,7 +410,7 @@ func (h *Handler) CreatePost(c *gin.Context) {
 
 	// 同步到主站
 	go func() {
-		if os.Getenv("SYNC_ENABLED") != "true" {
+		if os.Getenv("OUTBOUND_SYNC_ENABLED") != "true" {
 			return
 		}
 		if err := h.scraperService.SyncPostToMainSite(post); err != nil {
@@ -489,7 +489,7 @@ func (h *Handler) CreateReply(c *gin.Context) {
 
 	// 同步到主站
 	go func() {
-		if os.Getenv("SYNC_ENABLED") != "true" {
+		if os.Getenv("OUTBOUND_SYNC_ENABLED") != "true" {
 			return
 		}
 		if err := h.scraperService.SyncReplyToMainSite(post, reply); err != nil {
